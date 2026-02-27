@@ -131,7 +131,7 @@
         // Check API status
         async function checkApiStatus() {
             try {
-                const response = await fetch('/api/status');
+                const response = await fetch('api/status');
                 const data = await response.json();
                 const statusEl = document.getElementById('api-status');
                 if (data.api_configured) {
@@ -157,7 +157,7 @@
             document.getElementById('error-message').classList.add('hidden');
 
             try {
-                const response = await fetch('/api/upload', {
+                const response = await fetch('api/upload', {
                     method: 'POST',
                     body: formData
                 });
