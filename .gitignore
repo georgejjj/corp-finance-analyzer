@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+ENV/
+env/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Environment
+.env
+*.log
+
+# Uploads
+static/uploads/*.pdf
+static/uploads/*
+
+# Gunicorn
+*.sock
+*.ctl
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log

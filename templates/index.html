@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Corporate Financial Report Analyzer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        .loading {
+            border-top-color: #3498db;
+            -webkit-animation: spinner 1.5s linear infinite;
+            animation: spinner 1.5s linear infinite;
+        }
+        @keyframes spinner {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .markdown-body {
+            line-height: 1.8;
+        }
+        .markdown-body h3 {
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin-top: 1.5rem;
+            margin-bottom: 0.75rem;
+            color: #1a202c;
+        }
+        .markdown-body ul {
+            list-style-type: disc;
+            padding-left: 1.5rem;
+            margin-bottom: 1rem;
+        }
+        .markdown-body li {
+            margin-bottom: 0.5rem;
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-blue-50 to-indigo-100 min-h-screen">
+    <!-- Top Navigation -->
+    <nav class="bg-white shadow-lg">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16">
+                <div class="flex items-center">
+                    <span class="text-2xl">📊</span>
+                    <h1 class="ml-3 text-xl font-bold text-gray-800">Corporate Financial Report Analyzer</h1>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <span id="api-status" class="text-sm text-gray-500">Checking API status...</span>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <!-- Upload Section -->
+        <div class="bg-white rounded-xl shadow-md p-8 mb-8">
+            <h2 class="text-2xl font-bold text-gray-800 mb-4">📤 Upload Annual Report PDF</h2>
+            <div class="border-2 border-dashed border-gray-300 rounded-lg p-12 text-center hover:border-blue-500 transition-colors cursor-pointer" id="drop-zone">
+                <input type="file" id="file-input" accept=".pdf" class="hidden">
+                <div class="space-y-4">
+                    <span class="text-6xl">📄</span>
+                    <p class="text-gray-600">Click or drag to upload PDF file</p>
+                    <p class="text-sm text-gray-400">Supports listed company annual reports, max 50MB</p>
+                </div>
+            </div>
+            <div id="upload-progress" class="hidden mt-4">
+                <div class="bg-gray-200 rounded-full h-2">
+                    <div class="loading ease-linear rounded-full border-4 border-t-4 border-gray-200 h-8 w-8 mx-auto"></div>
+                </div>
+                <p class="text-center text-gray-600 mt-2">Analyzing, please wait...</p>
+            </div>
+        </div>
+
+        <!-- Analysis Results -->
+        <div id="results" class="hidden space-y-8">
+            <!-- File Info -->
+            <div class="bg-white rounded-xl shadow-md p-6">
+                <h3 class="text-xl font-bold text-gray-800 mb-4">📋 File Information</h3>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div class="bg-blue-50 p-4 rounded-lg">
+                        <p class="text-sm text-gray-600">Filename</p>
+                        <p id="filename" class="font-semibold text-gray-800">-</p>
+                    </div>
+                    <div class="bg-green-50 p-4 rounded-lg">
+                        <p class="text-sm text-gray-600">Text Length</p>
+                        <p id="text-length" class="font-semibold text-gray-800">-</p>
+                    </div>
+                    <div class="bg-purple-50 p-4 rounded-lg">
+                        <p class="text-sm text-gray-600">MD&A Length</p>
+                        <p id="mda-length" class="font-semibold text-gray-800">-</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Financial Metrics -->
+            <div class="bg-white rounded-xl shadow-md p-6">
+                <h3 class="text-xl font-bold text-gray-800 mb-4">📈 Financial Metrics</h3>
+                <div id="metrics-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <!-- Dynamically generated -->
+                </div>
+                <div class="mt-6">
+                    <canvas id="metrics-chart" height="100"></canvas>
+                </div>
+            </div>
+
+            <!-- AI Analysis -->
+            <div class="bg-white rounded-xl shadow-md p-6">
+                <h3 class="text-xl font-bold text-gray-800 mb-4">🤖 AI Analysis</h3>
+                <div id="ai-analysis" class="markdown-body text-gray-700">
+                    <!-- AI analysis result -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Error Message -->
+        <div id="error-message" class="hidden bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
+            <!-- Error message -->
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-white mt-12 py-6">
+        <div class="max-w-7xl mx-auto px-4 text-center text-gray-500">
+            <p>Corporate Finance Educational Demo | Powered by Qwen LLM</p>
+        </div>
+    </footer>
+
+    <script>
+        // Check API status
+        async function checkApiStatus() {
+            try {
+                const response = await fetch('/api/status');
+                const data = await response.json();
+                const statusEl = document.getElementById('api-status');
+                if (data.api_configured) {
+                    statusEl.textContent = '✓ API Configured';
+                    statusEl.className = 'text-sm text-green-600';
+                } else {
+                    statusEl.textContent = '⚠ API Not Configured, Analysis Limited';
+                    statusEl.className = 'text-sm text-yellow-600';
+                }
+            } catch (error) {
+                document.getElementById('api-status').textContent = '✗ Service Error';
+                document.getElementById('api-status').className = 'text-sm text-red-600';
+            }
+        }
+
+        // Upload file
+        async function uploadFile(file) {
+            const formData = new FormData();
+            formData.append('file', file);
+
+            document.getElementById('upload-progress').classList.remove('hidden');
+            document.getElementById('results').classList.add('hidden');
+            document.getElementById('error-message').classList.add('hidden');
+
+            try {
+                const response = await fetch('/api/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    displayResults(result);
+                } else {
+                    showError(result.error || 'Analysis failed');
+                }
+            } catch (error) {
+                showError('Network error: ' + error.message);
+            } finally {
+                document.getElementById('upload-progress').classList.add('hidden');
+            }
+        }
+
+        // Display results
+        function displayResults(result) {
+            const data = result.data;
+            
+            // File info
+            document.getElementById('filename').textContent = result.filename;
+            document.getElementById('text-length').textContent = data.text_length.toLocaleString() + ' chars';
+            document.getElementById('mda-length').textContent = data.mda_extracted.toLocaleString() + ' chars';
+
+            // Financial metrics
+            const metrics = data.metrics;
+            const metricsGrid = document.getElementById('metrics-grid');
+            metricsGrid.innerHTML = '';
+
+            const metricLabels = {
+                'revenue': 'Revenue (100M CNY)',
+                'net_profit': 'Net Profit (100M CNY)',
+                'total_assets': 'Total Assets (100M CNY)',
+                'total_liabilities': 'Total Liabilities (100M CNY)',
+                'net_assets': 'Net Assets (100M CNY)',
+                'operating_cash_flow': 'Operating Cash Flow (100M CNY)',
+                'profit_margin': 'Net Profit Margin (%)',
+                'roe': 'ROE (%)',
+                'gross_margin': 'Gross Margin (%)',
+                'debt_ratio': 'Debt-to-Asset Ratio (%)'
+            };
+
+            const chartData = {
+                labels: [],
+                values: []
+            };
+
+            for (const [key, value] of Object.entries(metrics)) {
+                if (value !== null) {
+                    const card = document.createElement('div');
+                    card.className = 'bg-gradient-to-br from-blue-50 to-indigo-50 p-4 rounded-lg';
+                    card.innerHTML = `
+                        <p class="text-sm text-gray-600">${metricLabels[key] || key}</p>
+                        <p class="text-2xl font-bold text-gray-800">${value}</p>
+                    `;
+                    metricsGrid.appendChild(card);
+
+                    chartData.labels.push(metricLabels[key] || key);
+                    chartData.values.push(value);
+                }
+            }
+
+            // Render chart
+            renderChart(chartData);
+
+            // AI analysis
+            const analysis = data.analysis;
+            const analysisEl = document.getElementById('ai-analysis');
+            
+            if (analysis.error) {
+                analysisEl.innerHTML = `
+                    <div class="bg-yellow-50 border border-yellow-200 text-yellow-800 p-4 rounded-lg">
+                        <p class="font-semibold">⚠ ${analysis.error}</p>
+                        ${analysis.suggestion ? `<p class="text-sm mt-2">${analysis.suggestion}</p>` : ''}
+                    </div>
+                `;
+            } else if (analysis.analysis) {
+                // Simple Markdown formatting
+                let formatted = analysis.analysis
+                    .replace(/### (.*?)(?=\n|$)/g, '<h3>$1</h3>')
+                    .replace(/^- (.*?)(?=\n|$)/gm, '<li>$1</li>')
+                    .replace(/(<li>.*?<\/li>)/s, '<ul>$1</ul>')
+                    .replace(/\n\n/g, '</ul><p>')
+                    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+                
+                analysisEl.innerHTML = formatted;
+            } else {
+                analysisEl.innerHTML = '<p class="text-gray-500">No analysis result</p>';
+            }
+
+            // Show results
+            document.getElementById('results').classList.remove('hidden');
+        }
+
+        // Render chart
+        function renderChart(data) {
+            const ctx = document.getElementById('metrics-chart').getContext('2d');
+            
+            // Destroy old chart
+            if (window.metricsChart) {
+                window.metricsChart.destroy();
+            }
+
+            window.metricsChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: data.labels,
+                    datasets: [{
+                        label: 'Financial Metrics',
+                        data: data.values,
+                        backgroundColor: [
+                            'rgba(59, 130, 246, 0.5)',
+                            'rgba(16, 185, 129, 0.5)',
+                            'rgba(245, 158, 11, 0.5)',
+                            'rgba(239, 68, 68, 0.5)',
+                            'rgba(139, 92, 246, 0.5)',
+                        ],
+                        borderColor: [
+                            'rgb(59, 130, 246)',
+                            'rgb(16, 185, 129)',
+                            'rgb(245, 158, 11)',
+                            'rgb(239, 68, 68)',
+                            'rgb(139, 92, 246)',
+                        ],
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        title: {
+                            display: true,
+                            text: 'Financial Metrics Visualization'
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+        }
+
+        // Show error
+        function showError(message) {
+            const errorEl = document.getElementById('error-message');
+            errorEl.textContent = '❌ ' + message;
+            errorEl.classList.remove('hidden');
+        }
+
+        // Event listeners
+        document.getElementById('drop-zone').addEventListener('click', () => {
+            document.getElementById('file-input').click();
+        });
+
+        document.getElementById('file-input').addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                uploadFile(e.target.files[0]);
+            }
+        });
+
+        // Drag and drop
+        const dropZone = document.getElementById('drop-zone');
+        
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('border-blue-500');
+        });
+
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('border-blue-500');
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('border-blue-500');
+            
+            if (e.dataTransfer.files.length > 0) {
+                uploadFile(e.dataTransfer.files[0]);
+            }
+        });
+
+        // Initialize
+        checkApiStatus();
+    </script>
+</body>
+</html>
