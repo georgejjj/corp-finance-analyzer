@@ -1,47 +1,61 @@
-# 公司金融年报分析系统
+# Corporate Annual Report Analyzer
 
-基于大模型的公司年报自动化分析教学演示系统
+An LLM-powered system for automated analysis of Chinese corporate annual reports, built as a teaching demonstration tool.
 
-## 功能特性
+## Features
 
-- 📤 PDF 年报上传
-- 📈 财务指标量化分析
-- 📝 管理层讨论与分析 (MD&A) 文本分析
-- 🤖 大模型智能洞察
-- 📊 可视化图表展示
+- PDF annual report upload
+- LLM-based financial metric extraction (revenue, net profit, total assets, ROE, etc.)
+- Management Discussion & Analysis (MD&A) text extraction
+- LLM-powered investment analysis and insights
+- Interactive chart visualization
 
-## 技术栈
+## Tech Stack
 
-- **前端**: HTML5 + TailwindCSS + Chart.js
-- **后端**: Python + Flask
-- **PDF 处理**: PyMuPDF (fitz)
-- **大模型**: 通义千问 API
+- **Frontend**: HTML5 + TailwindCSS + Chart.js
+- **Backend**: Python + Flask + Gunicorn
+- **PDF Processing**: PyMuPDF (fitz)
+- **LLM**: Qwen (qwen-plus) via DashScope API
 
-## 快速开始
+## How It Works
+
+1. **PDF text extraction** — PyMuPDF extracts raw text from uploaded annual reports
+2. **Financial metric extraction** — The LLM reads the financial summary section (主要财务指标/主要会计数据) and returns structured JSON with 10 key metrics, normalized to 亿元
+3. **MD&A extraction** — Locates the management discussion section for qualitative context
+4. **Investment analysis** — A second LLM call analyzes the extracted metrics and MD&A text, producing a structured report covering financial health, business prospects, and investment value
+
+The LLM-based extraction handles varied report formats across different company types:
+- Banks (e.g., ICBC) — units in 百万元, no gross margin, bank-specific line items
+- Manufacturers (e.g., CATL) — units in 千元, standard A-share format
+- Loss-making companies (e.g., Cambricon) — negative profits, units in 元
+
+## Quick Start
 
 ```bash
-# 安装依赖
+# Install dependencies
 pip install -r requirements.txt
 
-# 设置 API Key
+# Set API Key
 export DASHSCOPE_API_KEY="your-api-key"
 
-# 运行应用
-python app.py
+# Run with Gunicorn
+gunicorn --bind 127.0.0.1:8504 --timeout 120 app:app
 ```
 
-访问 http://localhost:5000
+Open http://127.0.0.1:8504
 
-## 目录结构
+## Directory Structure
 
 ```
 corp-finance-analyzer/
-├── app.py              # Flask 主应用
-├── analyzer.py         # 分析引擎
-├── requirements.txt    # Python 依赖
+├── app.py              # Flask application
+├── analyzer.py         # Analysis engine (LLM extraction + analysis)
+├── requirements.txt    # Python dependencies
 ├── templates/
-│   └── index.html     # 前端页面
+│   ├── index.html      # Frontend page
+│   ├── *.pdf           # Sample annual reports for testing
+│   └── ...
 ├── static/
-│   └── uploads/       # 上传文件目录
+│   └── uploads/        # Uploaded files directory
 └── README.md
 ```
