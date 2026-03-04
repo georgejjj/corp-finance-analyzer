@@ -8,7 +8,7 @@ import re
 import json
 import dashscope
 from dashscope import Generation
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 import os
 
 
@@ -41,146 +41,130 @@ class FinanceAnalyzer:
         doc.close()
         return text
     
+    def _find_financial_summary(self, text: str) -> str:
+        """Find the financial summary section (主要财务指标) for LLM extraction.
+
+        Skips table-of-contents entries (lines with '...' dot leaders) and
+        picks the first real section occurrence.
+
+        Args:
+            text: 年报全文
+
+        Returns:
+            包含财务摘要的文本片段
+        """
+        for keyword in ['主要会计数据', '主要财务指标', '财务概要']:
+            start = 0
+            while True:
+                idx = text.find(keyword, start)
+                if idx == -1:
+                    break
+                # Check if this is a TOC entry (has dot leaders nearby)
+                context = text[max(0, idx - 50):idx + 100]
+                if '...' in context or '…' in context:
+                    start = idx + len(keyword)
+                    continue
+                return text[max(0, idx - 200):idx + 6000]
+        # Fallback: first 8000 chars (summary is always near the top)
+        return text[:8000]
+
     def extract_financial_metrics(self, text: str) -> Dict:
-        """提取财务指标
-        
+        """使用 LLM 提取财务指标
+
         Args:
             text: 年报文本
-            
+
         Returns:
             财务指标字典
         """
-        metrics = {
-            'revenue': None,  # 营业收入
-            'net_profit': None,  # 净利润
-            'total_assets': None,  # 总资产
-            'total_liabilities': None,  # 总负债
-            'operating_cash_flow': None,  # 经营现金流
-            'net_assets': None,  # 净资产
-            'roe': None,  # 净资产收益率
-            'gross_margin': None,  # 毛利率
-            'debt_ratio': None,  # 资产负债率
-            'profit_margin': None,  # 净利率
+        null_metrics = {
+            'revenue': None,
+            'net_profit': None,
+            'total_assets': None,
+            'total_liabilities': None,
+            'operating_cash_flow': None,
+            'net_assets': None,
+            'roe': None,
+            'gross_margin': None,
+            'debt_ratio': None,
+            'profit_margin': None,
         }
-        
-        # 提取函数 - 支持表格格式（数字在文字下一行）
-        def extract_table_value(key_pattern, text, unit_multiplier=1.0):
-            # 先找关键字位置
-            idx = re.search(key_pattern, text)
-            if idx:
-                # 从关键字位置往后找数字
-                start = idx.end()
-                snippet = text[start:start+200]
-                # 匹配数字（支持千分位逗号）
-                num_match = re.search(r'([\d,]+\.?\d*)', snippet)
-                if num_match:
-                    value = num_match.group(1).replace(',', '')
-                    return float(value) * unit_multiplier
-            return None
-        
-        # 千元单位需要除以 10000 转换为亿元（注意 PDF 提取后括号可能是全角或半角）
-        metrics['revenue'] = extract_table_value(r'营业收入.*千元', text, unit_multiplier=0.0001)
-        metrics['net_profit'] = extract_table_value(r'归属于上市公司股东的净利润.*千元', text, unit_multiplier=0.0001)
-        metrics['operating_cash_flow'] = extract_table_value(r'经营活动产生的现金流量净额.*千元', text, unit_multiplier=0.0001)
-        
-        # 传统正则匹配（备用）- 支持多种格式
-        if not metrics['revenue']:
-            revenue_patterns = [
-                r'营业总收入 [：:]\s*([\d,\.]+)\s*(?:亿|亿元)',
-                r'营业收入 [：:]\s*([\d,\.]+)\s*(?:亿|亿元)',
-                r'营业收入\s*([\d,\.]+)',  # 简化版
-            ]
-            for pattern in revenue_patterns:
-                match = re.search(pattern, text)
-                if match:
-                    val = float(match.group(1).replace(',', ''))
-                    # 如果数字很大（>10000），可能是千元单位
-                    if val > 10000:
-                        val = val * 0.0001
-                    metrics['revenue'] = val
-                    break
-        
-        if not metrics['net_profit']:
-            profit_patterns = [
-                r'净利润 [：:]\s*([\d,\.]+)\s*(?:亿|亿元)',
-                r'归母净利润 [：:]\s*([\d,\.]+)\s*(?:亿|亿元)',
-                r'净利润\s*([\d,\.]+)',  # 简化版
-            ]
-            for pattern in profit_patterns:
-                match = re.search(pattern, text)
-                if match:
-                    val = float(match.group(1).replace(',', ''))
-                    if val > 10000:
-                        val = val * 0.0001
-                    metrics['net_profit'] = val
-                    break
-        
-        if not metrics['operating_cash_flow']:
-            cashflow_patterns = [
-                r'经营活动现金流.*?\s*([\d,\.]+)',
-            ]
-            for pattern in cashflow_patterns:
-                match = re.search(pattern, text)
-                if match:
-                    val = float(match.group(1).replace(',', ''))
-                    if val > 10000:
-                        val = val * 0.0001
-                    metrics['operating_cash_flow'] = val
-                    break
-        
-        # 提取总资产、总负债、净资产、毛利率等
-        # 使用更灵活的正则，支持数字在下一行
-        
-        # 资产总额
-        assets_match = re.search(r'资产总额.*?千元.*?\n\s*([\d,]+)', text)
-        if assets_match:
-            metrics['total_assets'] = float(assets_match.group(1).replace(',', '')) * 0.0001
-        
-        # 负债合计
-        liabilities_match = re.search(r'负债合计.*?千元.*?\n\s*([\d,]+)', text)
-        if liabilities_match:
-            metrics['total_liabilities'] = float(liabilities_match.group(1).replace(',', '')) * 0.0001
-        
-        # 净资产
-        equity_match = re.search(r'归属于上市公司股东的净资产.*?\n\s*([\d,]+)', text)
-        if equity_match:
-            metrics['net_assets'] = float(equity_match.group(1).replace(',', '')) * 0.0001
-        
-        # 毛利率（百分比）- 支持表格格式，数据可能在多行之后
-        # 使用 [\s\S] 匹配包括换行在内的所有字符
-        margin_search = re.search(r'毛利率[\s\S]{50,500}?([\d\.]+)\s*%', text)
-        if margin_search:
-            metrics['gross_margin'] = float(margin_search.group(1))
-        
-        # 如果找不到负债合计，用 资产 - 净资产 推算
-        if metrics['total_assets'] and metrics['net_assets'] and not metrics['total_liabilities']:
-            metrics['total_liabilities'] = round(metrics['total_assets'] - metrics['net_assets'], 2)
-        
-        # 计算资产负债率
-        if metrics['total_assets'] and metrics['total_liabilities']:
-            metrics['debt_ratio'] = round(
-                metrics['total_liabilities'] / metrics['total_assets'] * 100, 2
+
+        if not self.api_key:
+            return null_metrics
+
+        financial_text = self._find_financial_summary(text)
+
+        prompt = f"""You are a financial data extraction specialist. Extract the following metrics from this Chinese annual report text. Return ONLY valid JSON, no markdown fences, no explanation.
+
+Normalize all monetary values to 亿元 (100 million CNY). Pay attention to the unit stated in the report:
+- If the unit is 元, divide by 100,000,000
+- If the unit is 千元, divide by 100,000
+- If the unit is 百万元, divide by 100
+- If the unit is 亿元, use as-is
+
+Return percentage values as plain numbers (e.g., 24.13 not "24.13%").
+For negative values (e.g., loss-making companies), return negative numbers.
+Return null for any metric you genuinely cannot find in the text.
+
+Required JSON keys:
+{{
+  "revenue": "<营业收入/营业总收入, in 亿元>",
+  "net_profit": "<归属于上市公司/母公司股东的净利润, in 亿元>",
+  "total_assets": "<资产总额/总资产, in 亿元>",
+  "total_liabilities": "<负债合计/负债总额, in 亿元>",
+  "operating_cash_flow": "<经营活动产生的现金流量净额, in 亿元>",
+  "net_assets": "<归属于上市公司/母公司股东的净资产/所有者权益, in 亿元>",
+  "roe": "<加权平均净资产收益率, number>",
+  "gross_margin": "<综合毛利率, number or null if not available (e.g., banks)>",
+  "debt_ratio": "<资产负债率, number>",
+  "profit_margin": "<净利率 = net_profit/revenue * 100, number>"
+}}
+
+--- Annual Report Text ---
+{financial_text}
+"""
+
+        try:
+            response = Generation.call(
+                model='qwen-plus',
+                messages=[
+                    {'role': 'system', 'content': 'You extract structured financial data from Chinese annual reports. Return only valid JSON.'},
+                    {'role': 'user', 'content': prompt}
+                ],
+                max_tokens=1000,
+                temperature=0.1,
+                stream=False,
+                result_format='message'
             )
-        
-        # 计算资产负债率
-        if metrics['total_assets'] and metrics['total_liabilities']:
-            metrics['debt_ratio'] = round(
-                metrics['total_liabilities'] / metrics['total_assets'] * 100, 2
-            )
-        
-        # 计算 ROE（净资产收益率）
-        if metrics['net_assets'] and metrics['net_profit']:
-            metrics['roe'] = round(
-                metrics['net_profit'] / metrics['net_assets'] * 100, 2
-            )
-        
-        # 计算衍生指标
-        if metrics['revenue'] and metrics['net_profit']:
-            metrics['profit_margin'] = round(
-                metrics['net_profit'] / metrics['revenue'] * 100, 2
-            )
-        
-        return metrics
+
+            if response.status_code != 200:
+                return null_metrics
+
+            raw = response.output.choices[0].message.content.strip()
+            # Strip markdown fences if present
+            if raw.startswith('```'):
+                raw = re.sub(r'^```(?:json)?\s*', '', raw)
+                raw = re.sub(r'\s*```$', '', raw)
+
+            parsed = json.loads(raw)
+
+            # Validate and build metrics dict with expected keys
+            metrics = {}
+            for key in null_metrics:
+                val = parsed.get(key)
+                if val is not None:
+                    try:
+                        metrics[key] = round(float(val), 4)
+                    except (ValueError, TypeError):
+                        metrics[key] = None
+                else:
+                    metrics[key] = None
+
+            return metrics
+
+        except Exception:
+            return null_metrics
     
     def extract_mda_section(self, text: str) -> str:
         """提取管理层讨论与分析部分
@@ -258,9 +242,8 @@ Please analyze from the following dimensions:
 Please use professional but accessible language, present in bullet points, with each point not exceeding 100 words. Respond in English."""
 
         try:
-            # Use qwen-max model
             response = Generation.call(
-                model='qwen-max',
+                model='qwen-plus',
                 messages=[
                     {'role': 'system', 'content': 'You are a professional financial analyst specializing in corporate financial analysis and investment value assessment.'},
                     {'role': 'user', 'content': prompt}
